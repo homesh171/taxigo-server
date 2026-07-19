@@ -34,4 +34,14 @@ router.put('/:id/status', auth, async (req, res) => {
   }
 })
 
+// Delete driver
+router.delete('/:id', auth, async (req, res) => {
+  try {
+    await Driver.findByIdAndDelete(req.params.id)
+    res.json({ message: 'Driver deleted!' })
+  } catch (err) {
+    res.status(500).json({ message: err.message })
+  }
+})
+
 module.exports = router
