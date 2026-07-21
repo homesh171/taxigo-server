@@ -10,13 +10,15 @@ router.post('/', auth, async (req, res) => {
   try {
     const booking = await Booking.create({ ...req.body, customer: req.user.id })
     
-    // Send confirmation email
+    // Send response FIRST, then send email in background
+    res.json(booking)
+    
+    // Email in background - won't block response
     const customer = await User.findById(req.user.id)
     if (customer) {
-      await sendBookingConfirmation(customer.email, customer.name, booking)
+      sendBookingConfirmation(customer.email, customer.name, booking)
+        .catch(err => console.log('Email error:', err.message))
     }
-    
-    res.json(booking)
   } catch (err) {
     res.status(500).json({ message: err.message })
   }
@@ -61,22 +63,22 @@ router.put('/:id/assign', auth, async (req, res) => {
       { new: true }
     ).populate('customer', 'name email phone').populate('driver', 'name phone')
 
-    // Send driver assigned email
+    // Send response FIRST
+    res.json(booking)
+
+    // Email in background
     if (booking.customer) {
-      await sendDriverAssigned(
+      sendDriverAssigned(
         booking.customer.email,
         booking.customer.name,
         booking,
         booking.driver
-      )
+      ).catch(err => console.log('Driver email error:', err.message))
     }
-
-    res.json(booking)
   } catch (err) {
     res.status(500).json({ message: err.message })
   }
 })
-
 // Update status
 router.put('/:id/status', auth, async (req, res) => {
   try {
