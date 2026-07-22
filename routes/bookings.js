@@ -10,15 +10,15 @@ router.post('/', auth, async (req, res) => {
   try {
     const booking = await Booking.create({ ...req.body, customer: req.user.id })
     
-    // Send response FIRST, then send email in background
+    // Send response FIRST - don't wait for email
     res.json(booking)
     
-    // Email in background - won't block response
-    const customer = await User.findById(req.user.id)
-    if (customer) {
-      sendBookingConfirmation(customer.email, customer.name, booking)
-        .catch(err => console.log('Email error:', err.message))
-    }
+    // Email in background
+    User.findById(req.user.id).then(customer => {
+      if (customer) {
+        sendBookingConfirmation(customer.email, customer.name, booking)
+      }
+    })
   } catch (err) {
     res.status(500).json({ message: err.message })
   }
