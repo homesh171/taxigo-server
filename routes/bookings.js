@@ -5,20 +5,54 @@ const User = require('../models/User')
 const auth = require('../middleware/auth')
 const { sendBookingConfirmation, sendDriverAssigned } = require('../utils/email')
 
-// Create booking
+// Create booking (logged in customer)
 router.post('/', auth, async (req, res) => {
   try {
-    const booking = await Booking.create({ ...req.body, customer: req.user.id })
-    
-    // Send response FIRST - don't wait for email
-    res.json(booking)
-    
-    // Email in background
-    User.findById(req.user.id).then(customer => {
-      if (customer) {
-        sendBookingConfirmation(customer.email, customer.name, booking)
-      }
+    const booking = await Booking.create({ 
+      ...req.body, 
+      customer: req.user.id,
+      isGuest: false
     })
+    res.json(booking)
+    User.findById(req.user.id).then(customer => {
+      if (customer) sendBookingConfirmation(customer.email, customer.name, booking)
+    })
+  } catch (err) {
+    res.status(500).json({ message: err.message })
+  }
+})
+
+// Create guest booking (no auth required)
+router.post('/guest', async (req, res) => {
+  try {
+    const { guestName, guestEmail, guestPhone, pickup, dropoff, date, time, passengers, flight, vehicle, price } = req.body
+    const booking = await Booking.create({
+      pickup, dropoff, date, time, passengers, flight, vehicle, price,
+      guestName, guestEmail, guestPhone,
+      isGuest: true,
+      customer: null
+    })
+    res.json(booking)
+    // Send confirmation email to guest
+    sendBookingConfirmation(guestEmail, guestName, booking)
+  } catch (err) {
+    res.status(500).json({ message: err.message })
+  }
+})
+
+// Find booking by reference + email (for guests)
+router.post('/find', async (req, res) => {
+  try {
+    const { bookingReference, email } = req.body
+    const booking = await Booking.findOne({
+      bookingReference,
+      $or: [
+        { guestEmail: email },
+        { customer: null }
+      ]
+    }).populate('driver', 'name phone')
+    if (!booking) return res.status(404).json({ message: 'Booking not found! Check your reference and email.' })
+    res.json(booking)
   } catch (err) {
     res.status(500).json({ message: err.message })
   }
@@ -62,53 +96,21 @@ router.put('/:id/assign', auth, async (req, res) => {
       { driver: req.body.driverId, status: 'confirmed' },
       { new: true }
     ).populate('customer', 'name email phone').populate('driver', 'name phone')
-
-    // Send response FIRST
     res.json(booking)
-
-    // Email in background
     if (booking.customer) {
-      sendDriverAssigned(
-        booking.customer.email,
-        booking.customer.name,
-        booking,
-        booking.driver
-      ).catch(err => console.log('Driver email error:', err.message))
+      sendDriverAssigned(booking.customer.email, booking.customer.name, booking, booking.driver)
+    } else if (booking.guestEmail) {
+      sendDriverAssigned(booking.guestEmail, booking.guestName, booking, booking.driver)
     }
   } catch (err) {
     res.status(500).json({ message: err.message })
   }
 })
+
 // Update status
 router.put('/:id/status', auth, async (req, res) => {
   try {
-    const booking = await Booking.findByIdAndUpdate(
-      req.params.id,
-      { status: req.body.status },
-      { new: true }
-    )
-    res.json(booking)
-  } catch (err) {
-    res.status(500).json({ message: err.message })
-  }
-})
-
-router.post('/', auth, async (req, res) => {
-  try {
-    const booking = await Booking.create({ ...req.body, customer: req.user.id })
-    
-    const customer = await User.findById(req.user.id)
-    console.log('Customer found:', customer?.email)
-    
-    if (customer) {
-      try {
-        await sendBookingConfirmation(customer.email, customer.name, booking)
-        console.log('Email sent successfully!')
-      } catch (emailError) {
-        console.log('Email error:', emailError.message)
-      }
-    }
-    
+    const booking = await Booking.findByIdAndUpdate(req.params.id, { status: req.body.status }, { new: true })
     res.json(booking)
   } catch (err) {
     res.status(500).json({ message: err.message })

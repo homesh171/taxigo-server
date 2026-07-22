@@ -1,7 +1,7 @@
 const mongoose = require('mongoose')
 
 const bookingSchema = new mongoose.Schema({
-  customer: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  customer: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
   driver: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
   pickup: { type: String, required: true },
   dropoff: { type: String, required: true },
@@ -13,6 +13,22 @@ const bookingSchema = new mongoose.Schema({
   price: { type: Number, required: true },
   status: { type: String, enum: ['pending', 'confirmed', 'completed', 'cancelled'], default: 'pending' },
   paymentStatus: { type: String, enum: ['unpaid', 'paid'], default: 'unpaid' },
+  // Guest fields
+  isGuest: { type: Boolean, default: false },
+  guestName: { type: String, default: '' },
+  guestEmail: { type: String, default: '' },
+  guestPhone: { type: String, default: '' },
+  bookingReference: { type: String, sparse: true },
 }, { timestamps: true })
+
+// Auto generate booking reference
+bookingSchema.pre('save', function () {
+  if (!this.bookingReference) {
+    this.bookingReference =
+      'TG' +
+      Date.now().toString().slice(-6) +
+      Math.random().toString(36).slice(-3).toUpperCase();
+  }
+});
 
 module.exports = mongoose.model('Booking', bookingSchema)
